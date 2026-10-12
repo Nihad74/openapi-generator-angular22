@@ -392,6 +392,7 @@ public class Angular22Generator extends TypeScriptAngularClientCodegen {
             TypeScriptSnippets.processPathParameters(op, locals);
             TypeScriptSnippets.processHeaderParameters(op, locals);
             processQueryParameters(op);
+            TypeScriptSnippets.typeFilePartsAsFiles(op);
             TypeScriptSnippets.processFormParameters(op);
             TypeScriptSnippets.buildHttpCall(op, response);
 
