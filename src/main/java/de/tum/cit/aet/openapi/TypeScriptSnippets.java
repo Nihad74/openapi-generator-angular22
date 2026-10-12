@@ -46,7 +46,7 @@ final class TypeScriptSnippets {
         TEXT,
         /** A binary ({@code Blob}) return. */
         BLOB,
-        /** A file download; the service method returns the {@code HttpResponse} so callers get its headers. */
+        /** A file download; the service method always returns the {@code HttpResponse} so callers get its headers. */
         FILE;
 
         static ResponseKind of(CodegenOperation op) {
@@ -189,13 +189,24 @@ final class TypeScriptSnippets {
     }
 
     /**
+     * Whether a success response of the operation declares headers. Error responses don't count:
+     * {@code HttpErrorResponse} already exposes their headers.
+     *
+     * @param op the operation
+     * @return {@code true} if a 2xx response declares at least one header
+     */
+    static boolean declaresSuccessHeaders(CodegenOperation op) {
+        return op.responses.stream().anyMatch(response -> response.is2xx && !response.headers.isEmpty());
+    }
+
+    /**
      * Builds the {@code HttpClient} call of a service method once, so the template prints a single
      * {@code return this.http.<method><typeArg>(<args>);} line.
      *
      * <p>Sets vendor extensions on the operation:</p>
      * <ul>
      *   <li>{@code x-observable-type} &mdash; what the service method's {@code Observable} emits: the return type, or
-     *       the {@code HttpResponse<Blob>} of a file download</li>
+     *       {@code HttpResponse<T>} of it when the call observes the full response</li>
      *   <li>{@code x-http-type-arg} &mdash; the {@code <T>} type argument, empty when a {@code responseType}
      *       option selects a non-JSON overload that already fixes the result type</li>
      *   <li>{@code x-http-args} &mdash; the argument list: {@code url}, the payload for methods that take one,
@@ -203,10 +214,12 @@ final class TypeScriptSnippets {
      *       {@code headers}, {@code responseType} and {@code observe}</li>
      * </ul>
      *
-     * @param op       the operation whose HttpClient call should be built
-     * @param response how the response body is read
+     * @param op              the operation whose HttpClient call should be built
+     * @param response        how the response body is read
+     * @param observeResponse whether the call observes the full response, so the caller can read its headers; always
+     *                        {@code true} for a file download
      */
-    static void buildHttpCall(CodegenOperation op, ResponseKind response) {
+    static void buildHttpCall(CodegenOperation op, ResponseKind response, boolean observeResponse) {
         String payload = null;
         if (op.getHasFormParams()) {
             payload = "formData";
@@ -233,15 +246,18 @@ final class TypeScriptSnippets {
         options.addAll(switch (response) {
             case JSON -> List.of();
             case TEXT -> List.of("responseType: 'text'");
-            case BLOB -> List.of("responseType: 'blob'");
-            case FILE -> List.of("responseType: 'blob'", "observe: 'response'");
+            case BLOB, FILE -> List.of("responseType: 'blob'");
         });
+        if (observeResponse) {
+            options.add("observe: 'response'");
+        }
         if (!options.isEmpty()) {
             args.add("{ " + String.join(", ", options) + " }");
         }
 
         String returnType = op.returnType != null ? op.returnType : "void";
-        op.vendorExtensions.put("x-observable-type", response == ResponseKind.FILE ? "HttpResponse<Blob>" : returnType);
+        String bodyType = response == ResponseKind.FILE ? "Blob" : returnType;
+        op.vendorExtensions.put("x-observable-type", observeResponse ? "HttpResponse<" + bodyType + ">" : returnType);
         op.vendorExtensions.put("x-http-type-arg", response == ResponseKind.JSON ? "<" + returnType + ">" : "");
         op.vendorExtensions.put("x-http-args", String.join(", ", args));
     }
