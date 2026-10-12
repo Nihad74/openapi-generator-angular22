@@ -308,6 +308,58 @@ class Angular22GeneratorTest {
     }
 
     @Test
+    void rendersOneOfSchemasAsUnionsOfTheirBranches() throws IOException {
+        generateFixture("fixtures/one-of-openapi.yaml", Map.of());
+
+        assertContains(Files.readString(tempDir.resolve("model/question-create.ts")), """
+                import type { MultipleChoiceQuestionCreate } from './multiple-choice-question-create';
+                import type { ShortAnswerQuestionCreate } from './short-answer-question-create';
+
+                export type QuestionCreate = MultipleChoiceQuestionCreate | ShortAnswerQuestionCreate;
+                """);
+        // A primitive branch keeps its type and needs no import; an array branch imports its item model.
+        assertContains(Files.readString(tempDir.resolve("model/answer-value.ts")), """
+                import type { AnswerOption } from './answer-option';
+
+                export type AnswerValue = string | number | Array<AnswerOption>;
+                """);
+        // The parent's normalizer turns a {type: 'null'} branch into nullable: true.
+        assertContains(Files.readString(tempDir.resolve("model/hint.ts")), "export type Hint = AnswerOption | string | null;");
+        // The discriminator of each branch is a single-value enum, which a switch on it narrows the union by.
+        assertContains(Files.readString(tempDir.resolve("model/multiple-choice-question-create.ts")),
+                "export type MultipleChoiceQuestionCreateTypeEnum = 'multiple-choice';");
+    }
+
+    @Test
+    void declaresTheInheritedPropertiesOfASubtypeOfAUnion() throws IOException {
+        generateFixture("fixtures/one-of-openapi.yaml", Map.of());
+
+        assertContains(Files.readString(tempDir.resolve("model/question.ts")), "export type Question = MultipleChoiceQuestion | ShortAnswerQuestion;");
+        // An interface cannot extend a union, so the subtype states the parent's properties, and none of its sibling's.
+        assertContains(Files.readString(tempDir.resolve("model/multiple-choice-question.ts")), """
+                import type { AnswerOption } from './answer-option';
+
+                export interface MultipleChoiceQuestion {
+                    readonly title?: string;
+                    readonly type: MultipleChoiceQuestionTypeEnum;
+                    readonly answerOptions?: Array<AnswerOption>;
+                }
+                """);
+    }
+
+    @Test
+    void rejectsAOneOfSchemaWhoseBranchDoesNotRequireARootRequiredProperty() {
+        assertEquals("oneOf schema RefinementResponse requires property type, which its branch Success does not require. Declare it required on every branch.",
+                rootCause(assertThrows(RuntimeException.class, () -> generateFixture("invalid/one-of-root-required-openapi.yaml", Map.of()))).getMessage());
+    }
+
+    @Test
+    void rejectsAOneOfSchemaWhoseBranchDoesNotDeclareARootProperty() {
+        assertEquals("oneOf schema Value declares property note, which its branch number does not declare. Declare it on every branch.",
+                rootCause(assertThrows(RuntimeException.class, () -> generateFixture("invalid/one-of-root-property-openapi.yaml", Map.of()))).getMessage());
+    }
+
+    @Test
     void passesTheDeclaredStyleOfAQueryParameterToTheHelper() throws IOException {
         generateFixture("fixtures/query-style-openapi.yaml", Map.of());
 
@@ -378,6 +430,14 @@ class Angular22GeneratorTest {
                 .setOutputDir(tempDir.toString());
         additionalProperties.forEach(configurator::addAdditionalProperty);
         new DefaultGenerator().opts(configurator.toClientOptInput()).generate();
+    }
+
+    private static Throwable rootCause(Throwable error) {
+        Throwable cause = error;
+        while (cause.getCause() != null) {
+            cause = cause.getCause();
+        }
+        return cause;
     }
 
     private static void assertContains(String actual, String expected) {

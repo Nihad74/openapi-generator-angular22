@@ -1,0 +1,170 @@
+openapi: 3.1.1
+info:
+  title: OneOf API
+  version: 1.0.0
+tags:
+  - name: question
+paths:
+  /api/questions:
+    post:
+      tags:
+        - question
+      operationId: createQuestion
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/QuestionCreate'
+      responses:
+        '200':
+          description: The question, in the shape springdoc gives a sealed hierarchy
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Question'
+  /api/questions/{questionId}/value:
+    put:
+      tags:
+        - question
+      operationId: setValue
+      parameters:
+        - name: questionId
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Answer'
+      responses:
+        '200':
+          description: The hint, if any
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Hint'
+components:
+  schemas:
+    # oneOf of $ref branches with a discriminator. Each branch declares the discriminator as a single-value enum,
+    # which is what lets a switch on it narrow the union.
+    QuestionCreate:
+      oneOf:
+        - $ref: '#/components/schemas/MultipleChoiceQuestionCreate'
+        - $ref: '#/components/schemas/ShortAnswerQuestionCreate'
+      discriminator:
+        propertyName: type
+        mapping:
+          multiple-choice: '#/components/schemas/MultipleChoiceQuestionCreate'
+          short-answer: '#/components/schemas/ShortAnswerQuestionCreate'
+      required:
+        - type
+      properties:
+        type:
+          type: string
+    MultipleChoiceQuestionCreate:
+      type: object
+      required:
+        - type
+        - answerOptions
+      properties:
+        type:
+          type: string
+          enum:
+            - multiple-choice
+        answerOptions:
+          type: array
+          items:
+            $ref: '#/components/schemas/AnswerOption'
+    ShortAnswerQuestionCreate:
+      type: object
+      required:
+        - type
+      properties:
+        type:
+          type: string
+          enum:
+            - short-answer
+        spots:
+          type: array
+          items:
+            type: integer
+            format: int32
+    Answer:
+      type: object
+      properties:
+        value:
+          $ref: '#/components/schemas/AnswerValue'
+    AnswerOption:
+      type: object
+      properties:
+        text:
+          type: string
+    # Primitive and array branches.
+    AnswerValue:
+      oneOf:
+        - type: string
+        - type: integer
+          format: int32
+        - type: array
+          items:
+            $ref: '#/components/schemas/AnswerOption'
+    # A null branch, which the parent's normalizer turns into nullable: true.
+    Hint:
+      oneOf:
+        - $ref: '#/components/schemas/AnswerOption'
+        - type: string
+        - type: 'null'
+    # The shape springdoc emits for a sealed hierarchy: the parent lists its subtypes in oneOf, and each subtype
+    # extends the parent with allOf.
+    Question:
+      type: object
+      required:
+        - type
+      properties:
+        type:
+          type: string
+        title:
+          type: string
+      oneOf:
+        - $ref: '#/components/schemas/MultipleChoiceQuestion'
+        - $ref: '#/components/schemas/ShortAnswerQuestion'
+      discriminator:
+        propertyName: type
+        mapping:
+          multiple-choice: '#/components/schemas/MultipleChoiceQuestion'
+          short-answer: '#/components/schemas/ShortAnswerQuestion'
+    MultipleChoiceQuestion:
+      allOf:
+        - $ref: '#/components/schemas/Question'
+        - type: object
+          required:
+            - type
+          properties:
+            type:
+              type: string
+              enum:
+                - multiple-choice
+            answerOptions:
+              type: array
+              items:
+                $ref: '#/components/schemas/AnswerOption'
+    ShortAnswerQuestion:
+      allOf:
+        - $ref: '#/components/schemas/Question'
+        - type: object
+          required:
+            - type
+          properties:
+            type:
+              type: string
+              enum:
+                - short-answer
+            spots:
+              type: array
+              items:
+                type: integer
+                format: int32

@@ -1,0 +1,44 @@
+openapi: 3.1.1
+info:
+  title: OneOf Root Required API
+  version: 1.0.0
+paths:
+  /api/refinements:
+    post:
+      operationId: refine
+      responses:
+        '200':
+          description: The refinement result
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RefinementResponse'
+components:
+  schemas:
+    # The root requires the discriminator, but the Success branch does not, so a union would make it optional.
+    RefinementResponse:
+      type: object
+      required:
+        - type
+      properties:
+        type:
+          type: string
+      oneOf:
+        - $ref: '#/components/schemas/Success'
+        - $ref: '#/components/schemas/Failure'
+    Success:
+      type: object
+      properties:
+        type:
+          type: string
+          enum:
+            - success
+    Failure:
+      type: object
+      required:
+        - type
+      properties:
+        type:
+          type: string
+          enum:
+            - failure

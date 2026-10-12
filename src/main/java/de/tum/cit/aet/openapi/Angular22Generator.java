@@ -6,12 +6,14 @@ package de.tum.cit.aet.openapi;
 
 import io.swagger.v3.oas.models.OpenAPI;
 import io.swagger.v3.oas.models.Operation;
+import io.swagger.v3.oas.models.media.Schema;
 import org.openapitools.codegen.*;
 import org.openapitools.codegen.languages.TypeScriptAngularClientCodegen;
 import org.openapitools.codegen.model.ModelMap;
 import org.openapitools.codegen.model.ModelsMap;
 import org.openapitools.codegen.model.OperationMap;
 import org.openapitools.codegen.model.OperationsMap;
+import org.openapitools.codegen.utils.ModelUtils;
 import org.openapitools.codegen.utils.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -286,7 +288,7 @@ public class Angular22Generator extends TypeScriptAngularClientCodegen {
     }
 
     // =============================================================================================
-    // 4) postProcessAllModels &mdash; Mark models as readonly or mutable
+    // 4) postProcessAllModels &mdash; Mark models as readonly or mutable, render oneOf models as unions
     // =============================================================================================
 
     /**
@@ -302,6 +304,9 @@ public class Angular22Generator extends TypeScriptAngularClientCodegen {
      *   <li>{@code x-property-name} on each property &mdash; the property key, see {@link TypeScriptSnippets#toPropertyKey(String)}</li>
      * </ul>
      *
+     * <p>A model with {@code oneOf} branches becomes a union type, see {@link #renderAsUnion}, and a subtype of such a
+     * model stops extending it, see {@link #inlineUnionParent}.</p>
+     *
      * @param objs the map of all models, keyed by model name
      * @return the post-processed models map
      */
@@ -309,11 +314,24 @@ public class Angular22Generator extends TypeScriptAngularClientCodegen {
     public Map<String, ModelsMap> postProcessAllModels(Map<String, ModelsMap> objs) {
         Map<String, ModelsMap> result = super.postProcessAllModels(objs);
 
+        Map<String, CodegenModel> modelsByClass = new HashMap<>();
+        for (ModelsMap modelsMap : result.values()) {
+            for (ModelMap modelMap : modelsMap.getModels()) {
+                modelsByClass.put(modelMap.getModel().classname, modelMap.getModel());
+            }
+        }
+
         for (ModelsMap modelsMap : result.values()) {
             for (ModelMap modelMap : modelsMap.getModels()) {
                 CodegenModel model = modelMap.getModel();
                 requireWhatAncestorsRequire(model);
-                modelMap.put("tsImports", importsFromClassFiles(modelMap));
+                if (isUnion(model)) {
+                    modelMap.put("tsImports", renderAsUnion(model, modelsByClass));
+                } else if (model.parentModel != null && isUnion(model.parentModel)) {
+                    modelMap.put("tsImports", inlineUnionParent(model, modelsByClass));
+                } else {
+                    modelMap.put("tsImports", importsFromClassFiles(modelMap));
+                }
 
                 boolean isInputDto = model.name.endsWith("Create") ||
                         model.name.endsWith("Update") ||
@@ -328,6 +346,108 @@ public class Angular22Generator extends TypeScriptAngularClientCodegen {
         }
 
         return result;
+    }
+
+    private static boolean isUnion(CodegenModel model) {
+        CodegenComposedSchemas composed = model.getComposedSchemas();
+        return composed != null && composed.getOneOf() != null && !composed.getOneOf().isEmpty();
+    }
+
+    /**
+     * Renders a {@code oneOf} model as the union of its branches: {@code x-is-one-of} and {@code x-one-of-type}, e.g.
+     * {@code A | string | Array<B> | null}. The parent renders such a model as one interface that merges the
+     * properties of every branch, which no value satisfies.
+     *
+     * <p>A union member is the branch's type, so a primitive or array branch keeps its TypeScript type. The parent's
+     * normalizer replaces a {@code {type: 'null'}} branch with {@code nullable: true}, which adds {@code null} back.
+     * Properties declared on the {@code oneOf} root have no place in the union, so generation fails when a branch
+     * would lose one: when it does not declare a root property, or does not require one the root requires.</p>
+     *
+     * @param model         the {@code oneOf} model
+     * @param modelsByClass every model, by class name
+     * @return the imports of the model file: the models that the branches name
+     * @throws IllegalArgumentException if a branch does not declare or require a property of the root
+     */
+    private List<Map<String, String>> renderAsUnion(CodegenModel model, Map<String, CodegenModel> modelsByClass) {
+        List<CodegenProperty> branches = model.getComposedSchemas().getOneOf();
+        checkBranchesKeepRootProperties(model, branches, modelsByClass);
+
+        Set<String> members = new LinkedHashSet<>();
+        Set<String> imports = new LinkedHashSet<>();
+        for (CodegenProperty branch : branches) {
+            members.add(branch.dataType);
+            if (branch.complexType != null && modelsByClass.containsKey(branch.complexType)) {
+                imports.add(branch.complexType);
+            }
+        }
+        if (model.isNullable) {
+            members.add("null");
+        }
+        model.vendorExtensions.put("x-is-one-of", true);
+        model.vendorExtensions.put("x-one-of-type", String.join(" | ", members));
+        return imports.stream().map(Angular22Generator::tsImport).toList();
+    }
+
+    private void checkBranchesKeepRootProperties(CodegenModel model, List<CodegenProperty> branches, Map<String, CodegenModel> modelsByClass) {
+        Schema<?> root = ModelUtils.getSchema(openAPI, model.name);
+        if (root == null || root.getProperties() == null) {
+            return;
+        }
+        Set<String> rootRequired = root.getRequired() != null ? new HashSet<>(root.getRequired()) : Set.of();
+        for (CodegenProperty branch : branches) {
+            CodegenModel branchModel = modelsByClass.get(branch.dataType);
+            for (String property : root.getProperties().keySet()) {
+                CodegenProperty declared = branchModel == null ? null
+                        : branchModel.allVars.stream().filter(variable -> variable.baseName.equals(property)).findFirst().orElse(null);
+                if (declared == null) {
+                    throw new IllegalArgumentException("oneOf schema " + model.name + " declares property " + property + ", which its branch "
+                            + branch.dataType + " does not declare. Declare it on every branch.");
+                }
+                if (rootRequired.contains(property) && !declared.required) {
+                    throw new IllegalArgumentException("oneOf schema " + model.name + " requires property " + property + ", which its branch "
+                            + branch.dataType + " does not require. Declare it required on every branch.");
+                }
+            }
+        }
+    }
+
+    /**
+     * Lets a subtype of a {@code oneOf} model declare its inherited properties itself instead of extending the model.
+     * springdoc emits a sealed hierarchy this way: the parent lists its subtypes in {@code oneOf}, and each subtype
+     * extends it with {@code allOf}. An interface cannot extend a union (TS2312).
+     *
+     * <p>The subtype inherits only the properties the parent schema declares itself. The parent's codegen model
+     * merges the properties of all its branches, so the subtype's {@code allVars} would include its siblings'.</p>
+     *
+     * @param model         the subtype
+     * @param modelsByClass every model, by class name
+     * @return the imports of the model file: the models that its properties, inherited ones included, refer to
+     */
+    private List<Map<String, String>> inlineUnionParent(CodegenModel model, Map<String, CodegenModel> modelsByClass) {
+        Schema<?> parent = ModelUtils.getSchema(openAPI, model.parentModel.name);
+        Set<String> parentProperties = parent != null && parent.getProperties() != null ? parent.getProperties().keySet() : Set.of();
+        Set<String> ownProperties = new HashSet<>();
+        model.vars.forEach(property -> ownProperties.add(property.baseName));
+
+        List<CodegenProperty> vars = new ArrayList<>();
+        for (CodegenProperty property : model.parentModel.vars) {
+            if (parentProperties.contains(property.baseName) && !ownProperties.contains(property.baseName)) {
+                vars.add(property.clone());
+            }
+        }
+        vars.addAll(model.vars);
+        model.parent = null;
+        model.vars = vars;
+        model.hasVars = !vars.isEmpty();
+        model.hasEnums = vars.stream().anyMatch(property -> property.isEnum);
+
+        Set<String> imports = new LinkedHashSet<>();
+        for (CodegenProperty property : vars) {
+            if (property.complexType != null && !property.complexType.equals(model.classname) && modelsByClass.containsKey(property.complexType)) {
+                imports.add(property.complexType);
+            }
+        }
+        return imports.stream().map(Angular22Generator::tsImport).toList();
     }
 
     /**

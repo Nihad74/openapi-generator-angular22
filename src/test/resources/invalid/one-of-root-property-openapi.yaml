@@ -1,0 +1,33 @@
+openapi: 3.1.1
+info:
+  title: OneOf Root Property API
+  version: 1.0.0
+paths:
+  /api/values:
+    get:
+      operationId: getValue
+      responses:
+        '200':
+          description: The value
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Value'
+components:
+  schemas:
+    # The root declares a note that a primitive branch cannot carry.
+    Value:
+      type: object
+      properties:
+        note:
+          type: string
+      oneOf:
+        - $ref: '#/components/schemas/Text'
+        - type: integer
+    Text:
+      type: object
+      properties:
+        note:
+          type: string
+        text:
+          type: string

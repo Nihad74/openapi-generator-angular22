@@ -61,6 +61,24 @@ export interface CourseUpdate {
 }
 ```
 
+### Unions (`oneOf`)
+
+A `oneOf` schema becomes a union of its branches, with a `null` member when the schema is nullable or has a
+`{type: 'null'}` branch:
+
+```typescript
+export type QuizQuestionCreate = MultipleChoiceQuestionCreate | ShortAnswerQuestionCreate;
+```
+
+A `switch` on the discriminator narrows the union only if each branch declares the discriminator as a single-value
+enum (`type: {type: string, enum: [multiple-choice]}`), which springdoc emits for `@Schema(allowableValues = ...)`.
+Branches that declare it as a plain `string` give a union that does not narrow.
+
+Properties declared on the `oneOf` schema itself have no place in the union, so every branch has to declare them, and
+require the ones the schema requires; generation fails otherwise, naming the schema, the branch and the property. A
+subtype that extends a `oneOf` schema with `allOf`, the shape springdoc emits for a sealed hierarchy, declares the
+schema's properties itself, since an interface cannot extend a union.
+
 ### API Service (Mutations)
 ```typescript
 @Injectable({ providedIn: 'root' })
