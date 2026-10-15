@@ -44,15 +44,10 @@ final class TypeScriptSnippets {
         JSON,
         /** A string return whose produced media types are all {@code text/*}. */
         TEXT,
-        /** A binary ({@code Blob}) return. */
-        BLOB,
-        /** A file download; the service method always returns the {@code HttpResponse} so callers get its headers. */
-        FILE;
+        /** A binary ({@code Blob}) return, including a file download. */
+        BLOB;
 
         static ResponseKind of(CodegenOperation op) {
-            if (op.isResponseFile) {
-                return FILE;
-            }
             if ("Blob".equals(op.returnType)) {
                 return BLOB;
             }
@@ -189,14 +184,17 @@ final class TypeScriptSnippets {
     }
 
     /**
-     * Whether a success response of the operation declares headers. Error responses don't count:
-     * {@code HttpErrorResponse} already exposes their headers.
+     * Whether a service method returns the full {@code HttpResponse<T>} instead of the body, so the caller can read the
+     * response headers: always for a file download, and with {@code observeResponseHeaders} when a success response
+     * declares headers. Headers of an error response don't count: {@code HttpErrorResponse} already exposes them.
      *
-     * @param op the operation
-     * @return {@code true} if a 2xx response declares at least one header
+     * @param op                     the operation
+     * @param observeResponseHeaders the value of the generator option
+     * @return {@code true} if the service method observes the full response
      */
-    static boolean declaresSuccessHeaders(CodegenOperation op) {
-        return op.responses.stream().anyMatch(response -> response.is2xx && !response.headers.isEmpty());
+    static boolean observesResponse(CodegenOperation op, boolean observeResponseHeaders) {
+        return op.isResponseFile
+                || observeResponseHeaders && op.responses.stream().anyMatch(response -> response.is2xx && !response.headers.isEmpty());
     }
 
     /**
@@ -216,8 +214,7 @@ final class TypeScriptSnippets {
      *
      * @param op              the operation whose HttpClient call should be built
      * @param response        how the response body is read
-     * @param observeResponse whether the call observes the full response, so the caller can read its headers; always
-     *                        {@code true} for a file download
+     * @param observeResponse whether the call observes the full response, see {@link #observesResponse}
      */
     static void buildHttpCall(CodegenOperation op, ResponseKind response, boolean observeResponse) {
         String payload = null;
@@ -246,7 +243,7 @@ final class TypeScriptSnippets {
         options.addAll(switch (response) {
             case JSON -> List.of();
             case TEXT -> List.of("responseType: 'text'");
-            case BLOB, FILE -> List.of("responseType: 'blob'");
+            case BLOB -> List.of("responseType: 'blob'");
         });
         if (observeResponse) {
             options.add("observe: 'response'");
@@ -256,8 +253,7 @@ final class TypeScriptSnippets {
         }
 
         String returnType = op.returnType != null ? op.returnType : "void";
-        String bodyType = response == ResponseKind.FILE ? "Blob" : returnType;
-        op.vendorExtensions.put("x-observable-type", observeResponse ? "HttpResponse<" + bodyType + ">" : returnType);
+        op.vendorExtensions.put("x-observable-type", observeResponse ? "HttpResponse<" + returnType + ">" : returnType);
         op.vendorExtensions.put("x-http-type-arg", response == ResponseKind.JSON ? "<" + returnType + ">" : "");
         op.vendorExtensions.put("x-http-args", String.join(", ", args));
     }
@@ -314,7 +310,7 @@ final class TypeScriptSnippets {
         op.vendorExtensions.put("x-resource-factory", switch (response) {
             case JSON -> "httpResource<" + resourceType + ">";
             case TEXT -> "httpResource.text";
-            case BLOB, FILE -> "httpResource.blob";
+            case BLOB -> "httpResource.blob";
         });
 
         String url = "`${BASE_PATH}" + resourcePathTemplate + (hasQueryParams ? "${query ? `?${query}` : ''}" : "") + "`";

@@ -397,7 +397,6 @@ public class Angular22Generator extends TypeScriptAngularClientCodegen {
         OperationMap operations = result.getOperations();
         List<CodegenOperation> ops = operations.getOperation();
         List<CodegenOperation> getOperations = new ArrayList<>();
-        boolean usesHttpResponse = false;
 
         for (CodegenOperation op : ops) {
             TypeScriptSnippets.ResponseKind response = TypeScriptSnippets.ResponseKind.of(op);
@@ -406,10 +405,7 @@ public class Angular22Generator extends TypeScriptAngularClientCodegen {
             TypeScriptSnippets.processHeaderParameters(op, locals);
             processQueryParameters(op);
             TypeScriptSnippets.processFormParameters(op);
-            boolean observeResponse = response == TypeScriptSnippets.ResponseKind.FILE
-                    || observeResponseHeaders && TypeScriptSnippets.declaresSuccessHeaders(op);
-            TypeScriptSnippets.buildHttpCall(op, response, observeResponse);
-            usesHttpResponse |= observeResponse;
+            TypeScriptSnippets.buildHttpCall(op, response, TypeScriptSnippets.observesResponse(op, observeResponseHeaders));
 
             String specPath = op.vendorExtensions.get("x-path-from-spec").toString();
             op.vendorExtensions.put("xPathTemplate", TypeScriptSnippets.buildPathTemplate(op, specPath, false, locals));
@@ -426,7 +422,7 @@ public class Angular22Generator extends TypeScriptAngularClientCodegen {
         // the separate resources file holds only the GETs.
         operations.put("hasQueryParams", ops.stream().anyMatch(op -> !op.queryParams.isEmpty()));
         operations.put("hasResourceQueryParams", getOperations.stream().anyMatch(op -> !op.queryParams.isEmpty()));
-        operations.put("usesHttpResponse", usesHttpResponse);
+        operations.put("usesHttpResponse", ops.stream().anyMatch(op -> TypeScriptSnippets.observesResponse(op, observeResponseHeaders)));
         operations.put("hasSignalArguments", getOperations.stream()
                 .anyMatch(op -> !op.pathParams.isEmpty() || !op.headerParams.isEmpty() || !op.queryParams.isEmpty()));
 

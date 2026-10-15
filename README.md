@@ -276,7 +276,7 @@ body in `body` and the response headers in `headers`, in two cases:
 - `observeResponseHeaders` is on and a 2xx response of the operation declares `headers`, such as a pagination flag or
   the `Location` of a `201`. A header declared only on an error response does not count, since
   `HttpErrorResponse` already exposes it. The option is off by default, because it changes the return type of every
-  such method, and springdoc declares a `Location` header on many `201` responses.
+  such method.
 
 An httpResource function is unaffected; its `HttpResourceRef` exposes the headers of every response as `headers()`.
 
