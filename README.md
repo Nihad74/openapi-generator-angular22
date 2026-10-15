@@ -75,7 +75,8 @@ A primitive or array branch keeps its type (`string`, `Array<A>`), and an inline
 that schema becomes a copy of `A` without `null`; a property that refers to it is still typed `| null`.
 
 A TypeScript union is not exclusive: a value may match several branches, which `oneOf` forbids. The union is exact
-only when every branch has a distinct single-value discriminator or a different primitive type. With a distinct
+only when every branch has a distinct single-value discriminator or a primitive type of its own in TypeScript.
+`integer` and `number` both become `number`, so their union accepts `1`, which matches both branches. With a distinct
 single-value enum per branch (`type: {type: string, enum: [multiple-choice]}`, which springdoc emits for
 `@Schema(allowableValues = ...)`), a `switch` on the discriminator also narrows the union. Branches that declare it as
 a plain `string` give a union that neither narrows nor rejects a value matching two branches.
