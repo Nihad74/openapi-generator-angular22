@@ -63,16 +63,21 @@ export interface CourseUpdate {
 
 ### Unions (`oneOf`)
 
-A `oneOf` schema becomes a union of its branches, with a `null` member when the schema is nullable or has a
-`{type: 'null'}` branch:
+A `oneOf` schema with at least two branches besides a `{type: 'null'}` one becomes a union of its branches, with a
+`null` member when the schema is nullable or has such a branch:
 
 ```typescript
 export type QuizQuestionCreate = MultipleChoiceQuestionCreate | ShortAnswerQuestionCreate;
 ```
 
-A `switch` on the discriminator narrows the union only if each branch declares the discriminator as a single-value
-enum (`type: {type: string, enum: [multiple-choice]}`), which springdoc emits for `@Schema(allowableValues = ...)`.
-Branches that declare it as a plain `string` give a union that does not narrow.
+The parent generator reduces `oneOf: [{$ref: A}, {type: 'null'}]` to `A` before this step, so that schema becomes a
+copy of `A` without `null`; a property that refers to it is still typed `| null`.
+
+A TypeScript union is not exclusive: a value may match several branches, which `oneOf` forbids. The union is exact
+only when every branch has a distinct single-value discriminator or a different primitive type. With a distinct
+single-value enum per branch (`type: {type: string, enum: [multiple-choice]}`, which springdoc emits for
+`@Schema(allowableValues = ...)`), a `switch` on the discriminator also narrows the union. Branches that declare it as
+a plain `string` give a union that neither narrows nor rejects a value matching two branches.
 
 Properties declared on the `oneOf` schema itself have no place in the union, so every branch has to declare them, and
 require the ones the schema requires; generation fails otherwise, naming the schema, the branch and the property. A
