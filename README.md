@@ -81,10 +81,19 @@ single-value enum per branch (`type: {type: string, enum: [multiple-choice]}`, w
 `@Schema(allowableValues = ...)`), a `switch` on the discriminator also narrows the union. Branches that declare it as
 a plain `string` give a union that neither narrows nor rejects a value matching two branches.
 
-Properties declared on the `oneOf` schema itself have no place in the union, so every branch has to declare them, and
-require the ones the schema requires; generation fails otherwise, naming the schema, the branch and the property. A
-subtype that extends a `oneOf` schema with `allOf`, the shape springdoc emits for a sealed hierarchy, declares the
-schema's properties itself, since an interface cannot extend a union.
+Properties declared on the `oneOf` schema itself apply to every object branch. When an object branch does not declare
+one, or does not require one the schema requires, the object branches are intersected with those properties; other
+branches carry no properties and stay outside:
+
+```typescript
+export type RefinementResponse = (RefinementSuccess | RefinementFailure) & {
+    readonly type: string;
+} | number;
+```
+
+When every object branch already declares the schema's properties, the union stays plain. A subtype that extends a
+`oneOf` schema with `allOf`, the shape springdoc emits for a sealed hierarchy, declares the schema's properties
+itself, since an interface cannot extend a union.
 
 ### API Service (Mutations)
 ```typescript

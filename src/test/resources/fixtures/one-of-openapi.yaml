@@ -165,6 +165,49 @@ components:
         - type: object
           additionalProperties:
             $ref: '#/components/schemas/JsonValue'
+    # Root properties that an object branch does not declare, or does not require although the root does, are
+    # intersected with the object branches. A primitive branch carries no properties.
+    RefinementResponse:
+      required:
+        - type
+      properties:
+        type:
+          type: string
+        status:
+          type: string
+          enum:
+            - open
+            - closed
+      oneOf:
+        - $ref: '#/components/schemas/RefinementSuccess'
+        - $ref: '#/components/schemas/RefinementFailure'
+        - type: integer
+    RefinementSuccess:
+      type: object
+      properties:
+        type:
+          type: string
+          enum:
+            - success
+    RefinementFailure:
+      type: object
+      required:
+        - type
+      properties:
+        type:
+          type: string
+          enum:
+            - failure
+    # A map branch is an object too.
+    Annotated:
+      properties:
+        note:
+          type: string
+      oneOf:
+        - type: object
+          additionalProperties:
+            type: string
+        - type: string
     Level:
       type: string
       enum:

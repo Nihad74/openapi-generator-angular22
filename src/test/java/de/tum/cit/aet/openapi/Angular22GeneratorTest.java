@@ -374,22 +374,23 @@ class Angular22GeneratorTest {
     }
 
     @Test
-    void rejectsAOneOfSchemaWhoseBranchDoesNotRequireARootRequiredProperty() {
-        assertEquals("oneOf schema RefinementResponse requires property type, which its branch Success does not require. Declare it required on every branch.",
-                rootCause(assertThrows(RuntimeException.class, () -> generateFixture("invalid/one-of-root-required-openapi.yaml", Map.of()))).getMessage());
-    }
+    void intersectsTheObjectBranchesWithTheRootPropertiesTheyLose() throws IOException {
+        generateFixture("fixtures/one-of-openapi.yaml", Map.of());
 
-    @Test
-    void namesTheBranchAsTheSpecDoesWithModelAffixes() {
-        Map<String, Object> affixes = Map.of("modelNamePrefix", "Api", "modelNameSuffix", "Model", "modelSuffix", "Dto");
-        assertEquals("oneOf schema RefinementResponse requires property type, which its branch Success does not require. Declare it required on every branch.",
-                rootCause(assertThrows(RuntimeException.class, () -> generateFixture("invalid/one-of-root-required-openapi.yaml", affixes))).getMessage());
-    }
+        // RefinementSuccess does not require type and neither branch declares status; the integer branch has no properties.
+        assertContains(Files.readString(tempDir.resolve("model/refinement-response.ts")), """
+                export type RefinementResponse = (RefinementSuccess | RefinementFailure) & {
+                    readonly type: string;
+                    readonly status?: RefinementResponseStatusEnum;
+                } | number;
 
-    @Test
-    void rejectsAOneOfSchemaWhoseBranchDoesNotDeclareARootProperty() {
-        assertEquals("oneOf schema Value declares property note, which its branch number does not declare. Declare it on every branch.",
-                rootCause(assertThrows(RuntimeException.class, () -> generateFixture("invalid/one-of-root-property-openapi.yaml", Map.of()))).getMessage());
+                export type RefinementResponseStatusEnum = 'open' | 'closed';
+                """);
+        assertContains(Files.readString(tempDir.resolve("model/annotated.ts")), """
+                export type Annotated = { [key: string]: string; } & {
+                    readonly note?: string;
+                } | string;
+                """);
     }
 
     @Test
@@ -463,14 +464,6 @@ class Angular22GeneratorTest {
                 .setOutputDir(tempDir.toString());
         additionalProperties.forEach(configurator::addAdditionalProperty);
         new DefaultGenerator().opts(configurator.toClientOptInput()).generate();
-    }
-
-    private static Throwable rootCause(Throwable error) {
-        Throwable cause = error;
-        while (cause.getCause() != null) {
-            cause = cause.getCause();
-        }
-        return cause;
     }
 
     private static void assertContains(String actual, String expected) {

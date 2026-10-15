@@ -11,7 +11,22 @@ import type { {{classname}} } from './{{filename}}';
  */
 {{/description}}
 {{#vendorExtensions.x-is-one-of}}
+{{#vendorExtensions.x-one-of-type}}
 export type {{classname}} = {{{vendorExtensions.x-one-of-type}}};
+{{/vendorExtensions.x-one-of-type}}
+{{^vendorExtensions.x-one-of-type}}
+export type {{classname}} = {{{vendorExtensions.x-one-of-objects}}} & {
+{{#vendorExtensions.x-one-of-root-vars}}
+{{>modelProperty}}
+{{/vendorExtensions.x-one-of-root-vars}}
+}{{{vendorExtensions.x-one-of-others}}};
+{{#vendorExtensions.x-one-of-root-enums}}
+
+{{#vendorExtensions.x-one-of-root-vars}}
+{{>modelPropertyEnum}}
+{{/vendorExtensions.x-one-of-root-vars}}
+{{/vendorExtensions.x-one-of-root-enums}}
+{{/vendorExtensions.x-one-of-type}}
 {{/vendorExtensions.x-is-one-of}}
 {{^vendorExtensions.x-is-one-of}}
 {{#isEnum}}
@@ -27,25 +42,13 @@ export const {{classname}}Values = [{{#allowableValues}}{{#enumVars}}{{{value}}}
 {{#hasVars}}
 export interface {{classname}}{{#parent}} extends {{.}}{{/parent}} {
 {{#vars}}
-{{#description}}
-    /** {{{.}}} */
-{{/description}}
-{{#vendorExtensions.x-is-readonly}}    readonly {{/vendorExtensions.x-is-readonly}}{{^vendorExtensions.x-is-readonly}}    {{/vendorExtensions.x-is-readonly}}{{{vendorExtensions.x-property-name}}}{{^required}}?{{/required}}: {{#isEnum}}{{#isArray}}Array<{{classname}}{{enumName}}>{{/isArray}}{{^isArray}}{{classname}}{{enumName}}{{/isArray}}{{/isEnum}}{{^isEnum}}{{{dataType}}}{{/isEnum}}{{#isNullable}} | null{{/isNullable}};
+{{>modelProperty}}
 {{/vars}}
 }
 {{#hasEnums}}
 
 {{#vars}}
-{{#isEnum}}
-export type {{classname}}{{enumName}} = {{#allowableValues}}{{#enumVars}}{{{value}}}{{^-last}} | {{/-last}}{{/enumVars}}{{/allowableValues}};
-
-export const {{classname}}{{enumName}} = {
-{{#allowableValues}}{{#enumVars}}    {{name}}: {{{value}}} as const,
-{{/enumVars}}{{/allowableValues}}} as const;
-
-export const {{classname}}{{enumName}}Values = [{{#allowableValues}}{{#enumVars}}{{{value}}}{{^-last}}, {{/-last}}{{/enumVars}}{{/allowableValues}}] as const;
-
-{{/isEnum}}
+{{>modelPropertyEnum}}
 {{/vars}}
 {{/hasEnums}}
 {{/hasVars}}
