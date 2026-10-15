@@ -100,6 +100,8 @@ components:
           $ref: '#/components/schemas/AnswerValue'
         grid:
           $ref: '#/components/schemas/Grid'
+        difficulty:
+          $ref: '#/components/schemas/Difficulty'
     AnswerOption:
       type: object
       properties:
@@ -127,6 +129,24 @@ components:
             type: array
             items:
               $ref: '#/components/schemas/Cell'
+    # Enum branches: a referenced enum keeps its name, an inline enum contributes its values.
+    Difficulty:
+      oneOf:
+        - $ref: '#/components/schemas/Level'
+        - type: string
+          enum:
+            - easy
+            - hard
+        - type: integer
+          format: int32
+          enum:
+            - 1
+            - 2
+    Level:
+      type: string
+      enum:
+        - BEGINNER
+        - EXPERT
     Cell:
       type: object
       properties:

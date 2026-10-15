@@ -70,8 +70,9 @@ A `oneOf` schema with at least two branches besides a `{type: 'null'}` one becom
 export type QuizQuestionCreate = MultipleChoiceQuestionCreate | ShortAnswerQuestionCreate;
 ```
 
-The parent generator reduces `oneOf: [{$ref: A}, {type: 'null'}]` to `A` before this step, so that schema becomes a
-copy of `A` without `null`; a property that refers to it is still typed `| null`.
+A primitive or array branch keeps its type (`string`, `Array<A>`), and an inline enum branch contributes its values
+(`'easy' | 'hard'`). The parent generator reduces `oneOf: [{$ref: A}, {type: 'null'}]` to `A` before this step, so
+that schema becomes a copy of `A` without `null`; a property that refers to it is still typed `| null`.
 
 A TypeScript union is not exclusive: a value may match several branches, which `oneOf` forbids. The union is exact
 only when every branch has a distinct single-value discriminator or a different primitive type. With a distinct

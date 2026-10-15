@@ -329,6 +329,12 @@ class Angular22GeneratorTest {
 
                 export type Grid = Array<Array<Cell>> | { [key: string]: Array<Cell>; };
                 """);
+        // An inline enum branch contributes its values; its base type would absorb the other members.
+        assertContains(Files.readString(tempDir.resolve("model/difficulty.ts")), """
+                import type { Level } from './level';
+
+                export type Difficulty = Level | 'easy' | 'hard' | 1 | 2;
+                """);
         // The parent's normalizer turns a {type: 'null'} branch into nullable: true.
         assertContains(Files.readString(tempDir.resolve("model/hint.ts")), "export type Hint = AnswerOption | string | null;");
         // The discriminator of each branch is a single-value enum, which a switch on it narrows the union by.
@@ -364,6 +370,13 @@ class Angular22GeneratorTest {
     void rejectsAOneOfSchemaWhoseBranchDoesNotRequireARootRequiredProperty() {
         assertEquals("oneOf schema RefinementResponse requires property type, which its branch Success does not require. Declare it required on every branch.",
                 rootCause(assertThrows(RuntimeException.class, () -> generateFixture("invalid/one-of-root-required-openapi.yaml", Map.of()))).getMessage());
+    }
+
+    @Test
+    void namesTheBranchAsTheSpecDoesWithModelAffixes() {
+        Map<String, Object> affixes = Map.of("modelNamePrefix", "Api", "modelNameSuffix", "Model", "modelSuffix", "Dto");
+        assertEquals("oneOf schema RefinementResponse requires property type, which its branch Success does not require. Declare it required on every branch.",
+                rootCause(assertThrows(RuntimeException.class, () -> generateFixture("invalid/one-of-root-required-openapi.yaml", affixes))).getMessage());
     }
 
     @Test

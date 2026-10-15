@@ -349,13 +349,15 @@ public class Angular22Generator extends TypeScriptAngularClientCodegen {
     /**
      * Renders a {@code oneOf} model as the union of its branches: {@code x-is-one-of} and {@code x-one-of-type}, e.g.
      * {@code A | string | Array<B> | null}. The parent renders such a model as one interface that merges the
-     * properties of every branch, which no value satisfies.
+     * properties of every branch: it does not narrow, and it rejects valid values where branches require different
+     * fields.
      *
-     * <p>A union member is the branch's type, so a primitive or array branch keeps its TypeScript type. When the
-     * parent's normalizer replaces a {@code {type: 'null'}} branch with {@code nullable: true}, the union gets a
-     * {@code null} member back. Properties declared on the {@code oneOf} root have no place in the union, so generation
-     * fails when a branch would lose one: when it does not declare a root property, or does not require one the root
-     * requires.</p>
+     * <p>A union member is the branch's type, so a primitive or array branch keeps its TypeScript type, and an inline
+     * enum branch contributes its values ({@code 'LIGHT' | 'DARK'}) rather than its base type, which would absorb the
+     * other members. When the parent's normalizer replaces a {@code {type: 'null'}} branch with
+     * {@code nullable: true}, the union gets a {@code null} member back. Properties declared on the {@code oneOf} root
+     * have no place in the union, so generation fails when a branch would lose one: when it does not declare a root
+     * property, or does not require one the root requires.</p>
      *
      * @param model the {@code oneOf} model
      * @return the imports of the model file: the models that the branches refer to, at any depth
@@ -368,7 +370,11 @@ public class Angular22Generator extends TypeScriptAngularClientCodegen {
         Set<String> members = new LinkedHashSet<>();
         Set<String> imports = new LinkedHashSet<>();
         for (CodegenProperty branch : branches) {
-            members.add(branch.dataType);
+            if (branch.isEnum && branch._enum != null) {
+                branch._enum.forEach(value -> members.add(branch.isString ? TypeScriptSnippets.stringLiteral(value) : value));
+            } else {
+                members.add(branch.dataType);
+            }
             addImports(imports, branch);
         }
         if (model.isNullable) {
@@ -389,16 +395,18 @@ public class Angular22Generator extends TypeScriptAngularClientCodegen {
             // The parent links a oneOf root to the models of its branches; a primitive or array branch has none.
             CodegenModel branchModel = model.getInterfaceModels() == null ? null
                     : model.getInterfaceModels().stream().filter(candidate -> candidate.classname.equals(branch.dataType)).findFirst().orElse(null);
+            // Name the branch as the spec does, like the root, rather than by its class name with model affixes.
+            String branchName = branchModel != null ? branchModel.name : branch.dataType;
             for (String property : root.getProperties().keySet()) {
                 CodegenProperty declared = branchModel == null ? null
                         : branchModel.allVars.stream().filter(variable -> variable.baseName.equals(property)).findFirst().orElse(null);
                 if (declared == null) {
                     throw new IllegalArgumentException("oneOf schema " + model.name + " declares property " + property + ", which its branch "
-                            + branch.dataType + " does not declare. Declare it on every branch.");
+                            + branchName + " does not declare. Declare it on every branch.");
                 }
                 if (rootRequired.contains(property) && !declared.required) {
                     throw new IllegalArgumentException("oneOf schema " + model.name + " requires property " + property + ", which its branch "
-                            + branch.dataType + " does not require. Declare it required on every branch.");
+                            + branchName + " does not require. Declare it required on every branch.");
                 }
             }
         }
