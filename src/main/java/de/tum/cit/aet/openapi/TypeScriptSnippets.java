@@ -314,32 +314,6 @@ final class TypeScriptSnippets {
     }
 
     /**
-     * Types multipart file parts as {@code File} (or {@code Array<File>}) instead of the parent's {@code Blob}, so
-     * callers must pass a named file; a plain {@code Blob} is sent with the file name {@code blob}, and a server that
-     * resolves uploads by their original file name cannot tell such parts apart. Downloads keep {@code Blob}, which
-     * is what {@code HttpClient} returns.
-     *
-     * <p>The method signature prints {@code allParams} and the appends read {@code formParams}, which hold separate
-     * copies of each parameter, so both are updated.</p>
-     *
-     * @param op the operation whose form parameters should be typed
-     */
-    static void typeFilePartsAsFiles(CodegenOperation op) {
-        for (List<CodegenParameter> params : List.of(op.allParams, op.formParams)) {
-            for (CodegenParameter param : params) {
-                if (!param.isFormParam) {
-                    continue;
-                }
-                if (isBinaryType(param.dataType)) {
-                    param.dataType = "File";
-                } else if (param.isArray && param.items != null && isBinaryType(param.items.dataType)) {
-                    param.dataType = "Array<File>";
-                }
-            }
-        }
-    }
-
-    /**
      * Computes the {@code FormData.append} statement for each multipart field and stores it in the
      * {@code x-form-append} vendor extension.
      *
