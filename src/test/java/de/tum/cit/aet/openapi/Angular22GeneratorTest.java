@@ -335,6 +335,13 @@ class Angular22GeneratorTest {
 
                 export type Difficulty = Level | 'easy' | 'hard' | 1 | 2;
                 """);
+        // A string enum value with a format is still a string, so it keeps its quotes.
+        assertContains(Files.readString(tempDir.resolve("model/deadline.ts")),
+                "export type Deadline = '2020-01-01' | '2020-01-01T00:00:00Z' | number;");
+        // A recursive union refers to itself without importing itself (TS2440).
+        String jsonValue = Files.readString(tempDir.resolve("model/json-value.ts"));
+        assertContains(jsonValue, "export type JsonValue = string | number | Array<JsonValue> | { [key: string]: JsonValue; };");
+        assertFalse(jsonValue.contains("import "), jsonValue);
         // The parent's normalizer turns a {type: 'null'} branch into nullable: true.
         assertContains(Files.readString(tempDir.resolve("model/hint.ts")), "export type Hint = AnswerOption | string | null;");
         // The discriminator of each branch is a single-value enum, which a switch on it narrows the union by.

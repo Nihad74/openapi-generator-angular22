@@ -368,21 +368,20 @@ public class Angular22Generator extends TypeScriptAngularClientCodegen {
         checkBranchesKeepRootProperties(model, branches);
 
         Set<String> members = new LinkedHashSet<>();
-        Set<String> imports = new LinkedHashSet<>();
         for (CodegenProperty branch : branches) {
             if (branch.isEnum && branch._enum != null) {
-                branch._enum.forEach(value -> members.add(branch.isString ? TypeScriptSnippets.stringLiteral(value) : value));
+                // Only numbers and booleans are bare literals; a string with a format, such as a date, needs quotes too.
+                branch._enum.forEach(value -> members.add(branch.isNumeric || branch.isBoolean ? value : TypeScriptSnippets.stringLiteral(value)));
             } else {
                 members.add(branch.dataType);
             }
-            addImports(imports, branch);
         }
         if (model.isNullable) {
             members.add("null");
         }
         model.vendorExtensions.put("x-is-one-of", true);
         model.vendorExtensions.put("x-one-of-type", String.join(" | ", members));
-        return imports.stream().map(Angular22Generator::tsImport).toList();
+        return importsOf(model, branches);
     }
 
     private void checkBranchesKeepRootProperties(CodegenModel model, List<CodegenProperty> branches) {
@@ -442,8 +441,20 @@ public class Angular22Generator extends TypeScriptAngularClientCodegen {
         model.hasVars = !vars.isEmpty();
         model.hasEnums = vars.stream().anyMatch(property -> property.isEnum);
 
+        return importsOf(model, vars);
+    }
+
+    /**
+     * Collects the imports of a model file: the models that the given properties refer to at any depth, except the
+     * model itself, which a recursive schema refers to.
+     *
+     * @param model      the model whose file gets the imports
+     * @param properties the properties or union branches of the model
+     * @return the imports of the model file
+     */
+    private List<Map<String, String>> importsOf(CodegenModel model, List<CodegenProperty> properties) {
         Set<String> imports = new LinkedHashSet<>();
-        vars.forEach(property -> addImports(imports, property));
+        properties.forEach(property -> addImports(imports, property));
         imports.remove(model.classname);
         return imports.stream().map(Angular22Generator::tsImport).toList();
     }

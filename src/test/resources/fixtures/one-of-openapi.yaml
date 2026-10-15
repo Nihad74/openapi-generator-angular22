@@ -142,6 +142,29 @@ components:
           enum:
             - 1
             - 2
+    # String enum branches with a format: their values are strings, not dates.
+    Deadline:
+      oneOf:
+        - type: string
+          format: date
+          enum:
+            - '2020-01-01'
+        - type: string
+          format: date-time
+          enum:
+            - '2020-01-01T00:00:00Z'
+        - type: integer
+    # A recursive union refers to itself in its branches.
+    JsonValue:
+      oneOf:
+        - type: string
+        - type: number
+        - type: array
+          items:
+            $ref: '#/components/schemas/JsonValue'
+        - type: object
+          additionalProperties:
+            $ref: '#/components/schemas/JsonValue'
     Level:
       type: string
       enum:
