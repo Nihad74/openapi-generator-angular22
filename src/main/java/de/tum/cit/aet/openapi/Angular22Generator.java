@@ -314,21 +314,14 @@ public class Angular22Generator extends TypeScriptAngularClientCodegen {
     public Map<String, ModelsMap> postProcessAllModels(Map<String, ModelsMap> objs) {
         Map<String, ModelsMap> result = super.postProcessAllModels(objs);
 
-        Map<String, CodegenModel> modelsByClass = new HashMap<>();
-        for (ModelsMap modelsMap : result.values()) {
-            for (ModelMap modelMap : modelsMap.getModels()) {
-                modelsByClass.put(modelMap.getModel().classname, modelMap.getModel());
-            }
-        }
-
         for (ModelsMap modelsMap : result.values()) {
             for (ModelMap modelMap : modelsMap.getModels()) {
                 CodegenModel model = modelMap.getModel();
                 requireWhatAncestorsRequire(model);
                 if (isUnion(model)) {
-                    modelMap.put("tsImports", renderAsUnion(model, modelsByClass));
+                    modelMap.put("tsImports", renderAsUnion(model));
                 } else if (model.parentModel != null && isUnion(model.parentModel)) {
-                    modelMap.put("tsImports", inlineUnionParent(model, modelsByClass));
+                    modelMap.put("tsImports", inlineUnionParent(model));
                 } else {
                     modelMap.put("tsImports", importsFromClassFiles(modelMap));
                 }
@@ -358,27 +351,25 @@ public class Angular22Generator extends TypeScriptAngularClientCodegen {
      * {@code A | string | Array<B> | null}. The parent renders such a model as one interface that merges the
      * properties of every branch, which no value satisfies.
      *
-     * <p>A union member is the branch's type, so a primitive or array branch keeps its TypeScript type. The parent's
-     * normalizer replaces a {@code {type: 'null'}} branch with {@code nullable: true}, which adds {@code null} back.
-     * Properties declared on the {@code oneOf} root have no place in the union, so generation fails when a branch
-     * would lose one: when it does not declare a root property, or does not require one the root requires.</p>
+     * <p>A union member is the branch's type, so a primitive or array branch keeps its TypeScript type. When the
+     * parent's normalizer replaces a {@code {type: 'null'}} branch with {@code nullable: true}, the union gets a
+     * {@code null} member back. Properties declared on the {@code oneOf} root have no place in the union, so generation
+     * fails when a branch would lose one: when it does not declare a root property, or does not require one the root
+     * requires.</p>
      *
-     * @param model         the {@code oneOf} model
-     * @param modelsByClass every model, by class name
-     * @return the imports of the model file: the models that the branches name
+     * @param model the {@code oneOf} model
+     * @return the imports of the model file: the models that the branches refer to, at any depth
      * @throws IllegalArgumentException if a branch does not declare or require a property of the root
      */
-    private List<Map<String, String>> renderAsUnion(CodegenModel model, Map<String, CodegenModel> modelsByClass) {
+    private List<Map<String, String>> renderAsUnion(CodegenModel model) {
         List<CodegenProperty> branches = model.getComposedSchemas().getOneOf();
-        checkBranchesKeepRootProperties(model, branches, modelsByClass);
+        checkBranchesKeepRootProperties(model, branches);
 
         Set<String> members = new LinkedHashSet<>();
         Set<String> imports = new LinkedHashSet<>();
         for (CodegenProperty branch : branches) {
             members.add(branch.dataType);
-            if (branch.complexType != null && modelsByClass.containsKey(branch.complexType)) {
-                imports.add(branch.complexType);
-            }
+            addImports(imports, branch);
         }
         if (model.isNullable) {
             members.add("null");
@@ -388,14 +379,16 @@ public class Angular22Generator extends TypeScriptAngularClientCodegen {
         return imports.stream().map(Angular22Generator::tsImport).toList();
     }
 
-    private void checkBranchesKeepRootProperties(CodegenModel model, List<CodegenProperty> branches, Map<String, CodegenModel> modelsByClass) {
+    private void checkBranchesKeepRootProperties(CodegenModel model, List<CodegenProperty> branches) {
         Schema<?> root = ModelUtils.getSchema(openAPI, model.name);
         if (root == null || root.getProperties() == null) {
             return;
         }
         Set<String> rootRequired = root.getRequired() != null ? new HashSet<>(root.getRequired()) : Set.of();
         for (CodegenProperty branch : branches) {
-            CodegenModel branchModel = modelsByClass.get(branch.dataType);
+            // The parent links a oneOf root to the models of its branches; a primitive or array branch has none.
+            CodegenModel branchModel = model.getInterfaceModels() == null ? null
+                    : model.getInterfaceModels().stream().filter(candidate -> candidate.classname.equals(branch.dataType)).findFirst().orElse(null);
             for (String property : root.getProperties().keySet()) {
                 CodegenProperty declared = branchModel == null ? null
                         : branchModel.allVars.stream().filter(variable -> variable.baseName.equals(property)).findFirst().orElse(null);
@@ -419,11 +412,11 @@ public class Angular22Generator extends TypeScriptAngularClientCodegen {
      * <p>The subtype inherits only the properties the parent schema declares itself. The parent's codegen model
      * merges the properties of all its branches, so the subtype's {@code allVars} would include its siblings'.</p>
      *
-     * @param model         the subtype
-     * @param modelsByClass every model, by class name
-     * @return the imports of the model file: the models that its properties, inherited ones included, refer to
+     * @param model the subtype
+     * @return the imports of the model file: the models that its properties, inherited ones included, refer to at any
+     *         depth
      */
-    private List<Map<String, String>> inlineUnionParent(CodegenModel model, Map<String, CodegenModel> modelsByClass) {
+    private List<Map<String, String>> inlineUnionParent(CodegenModel model) {
         Schema<?> parent = ModelUtils.getSchema(openAPI, model.parentModel.name);
         Set<String> parentProperties = parent != null && parent.getProperties() != null ? parent.getProperties().keySet() : Set.of();
         Set<String> ownProperties = new HashSet<>();
@@ -442,11 +435,8 @@ public class Angular22Generator extends TypeScriptAngularClientCodegen {
         model.hasEnums = vars.stream().anyMatch(property -> property.isEnum);
 
         Set<String> imports = new LinkedHashSet<>();
-        for (CodegenProperty property : vars) {
-            if (property.complexType != null && !property.complexType.equals(model.classname) && modelsByClass.containsKey(property.complexType)) {
-                imports.add(property.complexType);
-            }
-        }
+        vars.forEach(property -> addImports(imports, property));
+        imports.remove(model.classname);
         return imports.stream().map(Angular22Generator::tsImport).toList();
     }
 

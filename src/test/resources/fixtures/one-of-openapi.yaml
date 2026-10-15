@@ -98,6 +98,8 @@ components:
       properties:
         value:
           $ref: '#/components/schemas/AnswerValue'
+        grid:
+          $ref: '#/components/schemas/Grid'
     AnswerOption:
       type: object
       properties:
@@ -112,6 +114,30 @@ components:
         - type: array
           items:
             $ref: '#/components/schemas/AnswerOption'
+    # Branches that refer to a model only inside nested arrays or maps.
+    Grid:
+      oneOf:
+        - type: array
+          items:
+            type: array
+            items:
+              $ref: '#/components/schemas/Cell'
+        - type: object
+          additionalProperties:
+            type: array
+            items:
+              $ref: '#/components/schemas/Cell'
+    Cell:
+      type: object
+      properties:
+        value:
+          type: integer
+          format: int32
+    Mark:
+      type: object
+      properties:
+        label:
+          type: string
     # A null branch, which the parent's normalizer turns into nullable: true.
     Hint:
       oneOf:
@@ -129,6 +155,12 @@ components:
           type: string
         title:
           type: string
+        marks:
+          type: array
+          items:
+            type: array
+            items:
+              $ref: '#/components/schemas/Mark'
       oneOf:
         - $ref: '#/components/schemas/MultipleChoiceQuestion'
         - $ref: '#/components/schemas/ShortAnswerQuestion'
@@ -168,3 +200,9 @@ components:
               items:
                 type: integer
                 format: int32
+            cells:
+              type: array
+              items:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Cell'

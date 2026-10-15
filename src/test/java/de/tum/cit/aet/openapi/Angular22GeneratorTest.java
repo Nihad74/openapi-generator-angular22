@@ -323,6 +323,12 @@ class Angular22GeneratorTest {
 
                 export type AnswerValue = string | number | Array<AnswerOption>;
                 """);
+        // A model inside a nested array or map branch is imported too.
+        assertContains(Files.readString(tempDir.resolve("model/grid.ts")), """
+                import type { Cell } from './cell';
+
+                export type Grid = Array<Array<Cell>> | { [key: string]: Array<Cell>; };
+                """);
         // The parent's normalizer turns a {type: 'null'} branch into nullable: true.
         assertContains(Files.readString(tempDir.resolve("model/hint.ts")), "export type Hint = AnswerOption | string | null;");
         // The discriminator of each branch is a single-value enum, which a switch on it narrows the union by.
@@ -336,14 +342,21 @@ class Angular22GeneratorTest {
 
         assertContains(Files.readString(tempDir.resolve("model/question.ts")), "export type Question = MultipleChoiceQuestion | ShortAnswerQuestion;");
         // An interface cannot extend a union, so the subtype states the parent's properties, and none of its sibling's.
+        // It imports the models of nested array properties, its own and the inherited ones.
         assertContains(Files.readString(tempDir.resolve("model/multiple-choice-question.ts")), """
+                import type { Mark } from './mark';
                 import type { AnswerOption } from './answer-option';
 
                 export interface MultipleChoiceQuestion {
                     readonly title?: string;
+                    readonly marks?: Array<Array<Mark>>;
                     readonly type: MultipleChoiceQuestionTypeEnum;
                     readonly answerOptions?: Array<AnswerOption>;
                 }
+                """);
+        assertContains(Files.readString(tempDir.resolve("model/short-answer-question.ts")), """
+                import type { Mark } from './mark';
+                import type { Cell } from './cell';
                 """);
     }
 
