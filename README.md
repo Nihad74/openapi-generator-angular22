@@ -147,8 +147,9 @@ part. A binary field (`format: binary`) is typed `File`, or `Array<File>`, and g
 the file's name; `FormData` would send a plain `Blob` with the name `blob`. To send a `Blob`, for example from
 `canvas.toBlob()` or `response.blob()`, wrap it in a named file: `new File([blob], 'name.png')`. Up to 2.0.0 these
 fields were typed `Blob`; callers that pass a plain `Blob` need that wrap now, which is a breaking change. A string,
-number, boolean or enum value goes out as text, which is OpenAPI's default, and a `Date` as ISO 8601, or as a full date for `format: date`. An untyped value, such as an item of
-`items: {}`, goes out by what it holds at runtime, so files stay files. Objects and maps go out as one JSON part, and
+number, boolean or enum value goes out as text, which is OpenAPI's default, and a `Date` as ISO 8601, or as a full
+date for `format: date`. An untyped value, such as an item of `items: {}`, goes out by what it holds at runtime, so
+files stay files. Objects and maps go out as one JSON part, and
 so does any field whose `encoding` names `application/json` or a `+json` media type. Spring reads a `@RequestPart List<String>` from one JSON part, so declare
 that encoding for it:
 
