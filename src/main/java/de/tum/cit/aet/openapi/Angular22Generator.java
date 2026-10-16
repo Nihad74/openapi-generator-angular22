@@ -327,24 +327,26 @@ public class Angular22Generator extends TypeScriptAngularClientCodegen {
                     modelMap.put("tsImports", importsFromClassFiles(modelMap));
                 }
 
-                boolean readonly = hasReadonlyProperties(model);
-                for (CodegenProperty property : model.vars) {
-                    property.vendorExtensions.put("x-is-readonly", readonly);
-                    property.vendorExtensions.put("x-property-name", TypeScriptSnippets.toPropertyKey(property.baseName));
-                }
+                prepareProperties(model, model.vars);
             }
         }
 
         return result;
     }
 
-    /** Tells whether a model is an output DTO, whose properties get {@code readonly}; input DTOs stay mutable. */
-    private boolean hasReadonlyProperties(CodegenModel model) {
+    /**
+     * Sets what {@code modelProperty.mustache} reads: {@code x-is-readonly}, true unless the model is an input DTO, and
+     * {@code x-property-name}.
+     */
+    private void prepareProperties(CodegenModel model, List<CodegenProperty> properties) {
         boolean isInputDto = model.name.endsWith("Create") ||
                 model.name.endsWith("Update") ||
                 model.name.endsWith("Request") ||
                 model.name.endsWith("Input");
-        return readonlyModels && !isInputDto;
+        for (CodegenProperty property : properties) {
+            property.vendorExtensions.put("x-is-readonly", readonlyModels && !isInputDto);
+            property.vendorExtensions.put("x-property-name", TypeScriptSnippets.toPropertyKey(property.baseName));
+        }
     }
 
     private static boolean isUnion(CodegenModel model) {
@@ -397,11 +399,7 @@ public class Angular22Generator extends TypeScriptAngularClientCodegen {
         if (rootVars.isEmpty()) {
             model.vendorExtensions.put("x-one-of-type", String.join(" | ", others));
         } else {
-            boolean readonly = hasReadonlyProperties(model);
-            for (CodegenProperty property : rootVars) {
-                property.vendorExtensions.put("x-is-readonly", readonly);
-                property.vendorExtensions.put("x-property-name", TypeScriptSnippets.toPropertyKey(property.baseName));
-            }
+            prepareProperties(model, rootVars);
             String union = String.join(" | ", objects);
             model.vendorExtensions.put("x-one-of-root-vars", rootVars);
             model.vendorExtensions.put("x-one-of-root-enums", rootVars.stream().anyMatch(property -> property.isEnum));
@@ -424,33 +422,25 @@ public class Angular22Generator extends TypeScriptAngularClientCodegen {
      * @return copies of the root's properties that have to be intersected with the object branches, in the root's order
      */
     private List<CodegenProperty> rootPropertiesTheBranchesLose(CodegenModel model, List<CodegenProperty> branches) {
-        Schema<?> root = ModelUtils.getSchema(openAPI, model.name);
-        if (root == null || root.getProperties() == null) {
-            return List.of();
-        }
-        Set<String> rootRequired = root.getRequired() != null ? new HashSet<>(root.getRequired()) : Set.of();
-        Set<String> lost = new HashSet<>();
-        for (CodegenProperty branch : branches) {
-            if (!isObject(model, branch)) {
-                continue;
-            }
-            CodegenModel branchModel = branchModel(model, branch);
-            for (String property : root.getProperties().keySet()) {
-                CodegenProperty declared = branchModel == null ? null
-                        : branchModel.allVars.stream().filter(variable -> variable.baseName.equals(property)).findFirst().orElse(null);
-                if (declared == null || rootRequired.contains(property) && !declared.required) {
-                    lost.add(property);
-                }
-            }
-        }
-        // The parent's codegen model of the root holds the root's own properties, followed by those of its branches.
-        List<CodegenProperty> rootVars = new ArrayList<>();
-        for (CodegenProperty property : model.vars) {
-            if (lost.remove(property.baseName)) {
-                rootVars.add(property.clone());
-            }
-        }
-        return rootVars;
+        List<CodegenModel> objects = branches.stream().filter(branch -> isObject(model, branch)).map(branch -> branchModel(model, branch)).toList();
+        return declaredProperties(model).stream().filter(property -> objects.stream().anyMatch(branch -> loses(branch, property))).toList();
+    }
+
+    /** Tells whether an object branch, a model or {@code null} for a map, lacks a root property or does not require it as the root does. */
+    private static boolean loses(CodegenModel branch, CodegenProperty rootProperty) {
+        CodegenProperty declared = branch == null ? null
+                : branch.allVars.stream().filter(variable -> variable.baseName.equals(rootProperty.baseName)).findFirst().orElse(null);
+        return declared == null || rootProperty.required && !declared.required;
+    }
+
+    /**
+     * Copies the properties a {@code oneOf} root declares itself, in its order. The parent's codegen model of the root
+     * holds them, followed by those of its branches.
+     */
+    private List<CodegenProperty> declaredProperties(CodegenModel union) {
+        Schema<?> schema = ModelUtils.getSchema(openAPI, union.name);
+        Set<String> declared = schema != null && schema.getProperties() != null ? schema.getProperties().keySet() : Set.of();
+        return union.vars.stream().filter(property -> declared.contains(property.baseName)).map(CodegenProperty::clone).toList();
     }
 
     /**
@@ -484,15 +474,13 @@ public class Angular22Generator extends TypeScriptAngularClientCodegen {
      *         depth
      */
     private List<Map<String, String>> inlineUnionParent(CodegenModel model) {
-        Schema<?> parent = ModelUtils.getSchema(openAPI, model.parentModel.name);
-        Set<String> parentProperties = parent != null && parent.getProperties() != null ? parent.getProperties().keySet() : Set.of();
         Set<String> ownProperties = new HashSet<>();
         model.vars.forEach(property -> ownProperties.add(property.baseName));
 
         List<CodegenProperty> vars = new ArrayList<>();
-        for (CodegenProperty property : model.parentModel.vars) {
-            if (parentProperties.contains(property.baseName) && !ownProperties.contains(property.baseName)) {
-                vars.add(property.clone());
+        for (CodegenProperty property : declaredProperties(model.parentModel)) {
+            if (!ownProperties.contains(property.baseName)) {
+                vars.add(property);
             }
         }
         vars.addAll(model.vars);
